@@ -1,0 +1,1033 @@
+# -*- mode: yaml -*-
+# vim: set filetype=yaml:
+# atom: set grammar=yaml
+---
+version: 2
+
+vars:
+  name: SBCDNCDATASERVERLESS
+  asv: &asv ASVSBCBRDATA
+  ba: &ba BASBCBRDATA
+  component: &component BAPSBCDNCDATASERVERLESS
+  owner: &owner spectre@capitalone.com
+  team_name: Spectre
+  artemis_demo_mode: false
+  artemis_enabled: true
+  artemis_onboarding_enabled: yes
+  artemis_lob: US_CARD
+  artemis_apptype: Application
+  artemis_assessment_owner: EAE392
+  artemis_approver: EAE392
+
+  ## REFERENCE VARIABLES
+
+  aws:
+    - &aws_account_dev          app-card-sbc-qa-4-1
+    - &aws_account_dev_id       322666074950  
+    - &aws_account_qa           app-card-sbc-qa-4-1
+    - &aws_account_qa_id        322666074950
+    # - &aws_account_prod         app-card-sbc-prd-4-1
+    # - &aws_account_prod_id      126469229086
+    - &aws_east                 us-east-1
+    - &aws_west                 us-west-2
+  
+  bogie_gears:
+    - &glue_gear                aws-glue:^2
+    - &s3_gear                  s3-data:^4
+    - &avenue-gear              avenue:^1
+  
+  pied_piper_hec_token:
+    ## Need to complete
+    - &nonprod_hec_token        3cd0bbdb-0b09-4f60-8742-2167194f5f85
+    - &prod_hec_token           2762a207-c0ea-4fe4-b170-3f6a679591f2
+
+  qa_east_sgs: &qa_east_sgs
+    security_groups:
+      - sg-0e0974376de2594d3    # Enterprise-AllInstances-SG-24.01
+      - sg-03d29f9cfa926463f    # CoreServicesAccess-SG-24.01
+      ## Need Glue SG
+
+  qa_west_sgs: &qa_west_sgs
+    security_groups:
+      - sg-0b6a44791c7055cd3    # Enterprise-AllInstances-SG-24.01
+      - sg-0125b69254379e187    # CoreServicesAccess-SG-24.01
+      ## Need Glue SG
+  
+  prod_east_sgs: &prod_east_sgs
+    security_groups:
+      - sg-06bcc00b0c143613d    # Enterprise-AllInstances-SG-24.01
+      - sg-0b9ff13cce2fbee03    # CoreServicesAccess-SG-24.01
+      ## Need Glue SG
+  
+  prod_west_sgs: &prod_west_sgs
+    security_groups:
+      - sg-088838909250e0b01    # Enterprise-AllInstances-SG-24.01
+      - sg-0f9a9e8455a83558e    # CoreServicesAccess-SG-24.01
+      ## Need Glue SG
+
+  s3_buckets:
+    - &qa_east_s3_bucket        app-card-sbcbrdata-qa
+    - &qa_west_s3_bucket        app-card-sbcbrdata-qa-west
+    - &dev_s3_bucket            app-card-sbcbrdata-qa ## Confirm this bucket (resides in QA account)
+    - &prod_east_s3_bucket      ## Needed
+    - &prod_west_s3_bucket      ## Needed
+
+  qa_team_eids: &qa_team_eids
+    - GR_GG_COF_AWS_322666074950_Developer/pip860
+    - ## Fill in other EIDs
+
+  resource_names:
+    - &glue_job_name            sbc-dnc-data-serverless-glue-job
+    - &glue_connector_name      sbc-dnc-data-serverless-glue-connector
+    - &glue_iam_role_name       ## Needed
+
+  glue_job_common_inputs: &glue_job_common_inputs
+    resource_name: *glue_job_name
+    resource_type: job
+    connections:
+      - *glue_connector_name
+    asv: *asv
+    owner: *owner
+    ba: *ba
+    component: *component
+    glue_version: 4.0
+    class_name: GlueApp
+    script_language: python
+    command_name: glueetl
+    job_bookmark: disable
+    log_level: INFO # OPTIONAL
+    pied_piper_preserve_on_destroy: yes
+    security_configuration: COF-Encrypted-52d2311dcf96ea7dd12e79d4ba00b547f26db1a3 # Constant across Gen3 accounts
+
+  glue_job_default_args: &glue_job_default_args
+    enable-metrics: 'true'
+    enable-spark-ui: 'true'
+    enable-auto-scaling: 'true'
+    enable-continuous-cloudwatch-log: 'true'
+    enable-job-insights: 'true'
+    enable-observability-metrics: 'true'
+    disable-proxy-v2: 'true'
+    python-modules-installer-option: '--index-url=https://artifactory.cloud.capitalone.com/artifactory/api/pypi/pypi-internalfacing/simple'
+  
+  ## END REFERENCE VARIABLES
+  
+
+## PIPELINE
+pipeline:
+  managed: true
+  flavor: data-processing/application
+  ci_server: card-sbc-n2jenkins
+
+  feature_toggles:
+    always_deploy_to_qa: yes
+    disable_default_environment_names: yes
+    skip_dev_on_release_branch: yes
+    ## added
+    gitversion_enabled: true
+  
+  tasks:
+    build:
+      chdir: .
+      tool: python
+      coveragePath: src
+      userTestsPathOnly: true
+      package_exclude_files:
+        ## to be added
+      testsPath: tests/unit
+      binariesToZip:
+        - '*.py'
+      artifact:
+       fileExtension: 'zip'
+    code_analysis:
+      sonar:
+        codeCoverageTool:
+        host_url: https://sonar.cloud.capitalone.com
+        opts:
+          - -Dsonar.sources="."
+          - -Dsonar.projectKey="SBCDNCDATASERVERLESS"
+          - -Dsonar.projeectName="SBCDNCDATASERVERLESS"
+          - -Dsonar.language="py"
+          - -Dsonar.sourceEncoding="UTF-8"
+          - -Dsonar.python.coverage.reportPath="coverage.xml"
+
+    deploy:
+      ## Add secrets?
+
+      ## QA
+      qa-aws-s3-east:
+        aws_account_name: *aws_account_qa
+        entrypoints: ['provision', 'deploy']
+        deployments: ["qa-aws-s3-east"]
+        skip: yes
+      qa-aws-s3-west:
+        aws_account_name: *aws_account_qa
+        entrypoints: ['provision', 'deploy']
+        deployments: ["qa-aws-s3-west"]
+        skip: yes
+      qa-aws-glue-extract-job-east:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-extract-job-east"]
+      qa-aws-glue-transform-job-east:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-transform-job-east"]
+      qa-aws-glue-load-job-east:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-load-job-east"]
+      qa-aws-glue-extract-job-west:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-extract-job-west"]
+      qa-aws-glue-transform-job-west:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-transform-job-west"]
+      qa-aws-glue-load-job-west:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-load-job-west"]
+      qa-aws-glue-s3-connection-east:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-s3-connection-east"]
+      qa-aws-glue-opensearch-connection-east:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-opensearch-connection-east"]
+      qa-aws-glue-s3-connection-west:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-s3-connection-west"]
+      qa-aws-glue-opensearch-connection-west:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["qa-aws-glue-opensearch-connection-west"]
+      qa-avenue:
+        aws_account_name: *aws_account_qa
+        entrypoints: ['provision', 'deploy']
+        deployments: ["qa-avenue"]
+        skip: yes
+
+      ## DEV
+      dev-aws-s3:
+        aws_account_name: *aws_account_qa
+        entrypoints: ['provision', 'deploy']
+        deployments: ["dev-aws-s3"]
+        skip: yes
+      dev-aws-glue-extract-job:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["dev-aws-glue-extract-job"]
+      dev-aws-glue-transform-job:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["dev-aws-glue-transform-job"]
+      dev-aws-glue-load-job:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["dev-aws-glue-load-job"]
+      dev-aws-glue-s3-connection:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["dev-aws-glue-s3-connection"]
+      dev-aws-glue-opensearch-connection:
+        aws_account_name: *aws_account_qa
+        entrypoints: deploy
+        deployments: ["dev-aws-glue-opensearch-connection"]
+      dev-avenue:
+        aws_account_name: &aws_account_prod
+        entrypoints: ['provision', 'deploy']
+        deployments: ["dev-avenue"]
+        skip: yes
+
+      ### PROD
+      # prod-aws-s3-east:
+      #   aws_account_name: &aws_account_prod
+      #   entrypoints: deploy
+      #   deployments: ["prod-aws-s3-east"]
+      # prod-aws-s3-west:
+      #   aws_account_name: &aws_account_prod
+      #   entrypoints: deploy
+      #   deployments: ["prod-aws-s3-west"]
+
+      # prod-aws-glue-extract-job-east:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-extract-job-east"]
+      # prod-aws-glue-transform-job-east:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-transform-job-east"]
+      # prod-aws-glue-load-job-east:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-load-job-east"]
+      # prod-aws-glue-extract-job-west:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-extract-job-west"]
+      # prod-aws-glue-transform-job-west:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-transform-job-west"]
+      # prod-aws-glue-load-job-west:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-load-job-west"]
+
+      # prod-aws-glue-s3-connection-east:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-s3-connection-east"]
+      # prod-aws-glue-opensearch-connection-east:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-opensearch-connection-east"]
+      # prod-aws-glue-s3-connection-west:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-s3-connection-west"]
+      # prod-aws-glue-opensearch-connection-west:
+        # aws_account_name: &aws_account_prod
+        # entrypoints: deploy
+        # deployments: ["prod-aws-glue-opensearch-connection-west"]
+
+      # prod-avenue:
+      #   aws_account_name: &aws_account_prod
+      #   entrypoints: deploy
+      #   deployments: ["prod-avenue"]
+      
+
+environments:
+  ## QA ##
+  - name: qa-s3-data-east
+    gear: *s3_gear
+    inputs: &default_s3_inputs
+      ba: *ba
+      component: *component
+      owner: *owner
+      lifecycle_policy_file_url: https://github.cloud.capitalone.com/raw/CDO-ConsultativeSales/SBC_DNCDATA/gen3_infra_setup/infra/s3/dev/lifecycle-policy.json
+      datastore_inventory:
+        contains_data: true
+        contains_human_data: true
+        contains_hshd: false
+        contains_pii: true
+        data_international_indicator:
+          - NONE
+       tags:
+        ASV: ASVSBCBRDATA
+        owner: dipanjan.sen@capitalone.com
+        CMDBEnvironment: ENVNPSBCBRDATA
+    regions:
+      - name: *aws_east
+        bucket_name: *qa_east_s3_bucket
+        logging_bucket: aws-logs-186133747232-us-east-1 
+        policy_file_url: https://github.cloud.capitalone.com/raw/CDO-ConsultativeSales/SBC_DNCDATA/gen3_infra_setup/infra/s3/dev/policy-east.json
+        bucket_contents:
+          artifact_extract_paths:
+            - source: scripts
+              destination: ./glue
+        policy_app_iam_roles:
+          - arn:aws:iam::322666074950:role/BAASVJENKINSPLATFORM/IAMReserved-Jenkins3x-Child*
+          - *glue_iam_role_name
+        policy_federated_eids: *qa_team_eids
+        lifecycle_rules: &s3_life_cycle_rules
+          - rule_name: ## Needed
+            prefix: sample/ ## Verify
+            current_version:
+              expiration_days: ## Needed
+              transitions_days: ## Needed
+            non_current_version:
+              expiration_days: ## Needed
+              transitions_days: ## Needed
+        
+  - name: qa-s3-data-west
+    gear: *s3_gear
+    inputs: *default_s3_inputs
+    regions:
+      - name: *aws_west
+        bucket_name: *qa_west_s3_bucket
+        logging_bucket: aws-logs-322666074950-us-west-2
+        policy_file_url: https://github.cloud.capitalone.com/raw/CDO-ConsultativeSales/SBC_DNCDATA/gen3_infra_setup/infra/s3/qa/policy-west.json
+        bucket_contents:
+          artifact_extract_paths:
+            - source: scripts
+              destination: ./glue
+        policy_app_iam_roles:
+          - arn:aws:iam::322666074950:role/BAASVJENKINSPLATFORM/IAMReserved-Jenkins3x-Child*
+          - *glue_iam_role_name
+        policy_federated_eids: *qa_team_eids
+        lifecycle_rules: &s3_life_cycle_rules
+          - rule_name: ## Needed
+            prefix: sample/ ## Verify
+            current_version:
+              expiration_days: ## Needed
+              transitions_days: ## Needed
+            non_current_version:
+              expiration_days: ## Needed
+              transitions_days: ## Needed
+
+  - name: qa-aws-glue-extract-job-east
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_east
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_east
+
+  - name: qa-aws-glue-transform-job-east
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_east
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_east
+
+  - name: qa-aws-glue-load-job-east
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_east
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_east
+
+  - name: qa-aws-glue-extract-job-west
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_west
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_west
+
+  - name: qa-aws-glue-transform-job-west
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_west
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_west
+
+  - name: qa-aws-glue-load-job-west
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_west
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_west
+  
+  - name: qa-aws-glue-s3-connection-east
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_east
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to S3"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_east_sgs
+      subnet_id: ## Verify
+      availability_zone: us-east-1c ## Verify AZ
+
+  - name: qa-aws-glue-opensearch-connection-east
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_east
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to OpenSearch"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_east_sgs
+      subnet_id: ## Verify
+      availability_zone: us-east-1c ## Verify AZ
+
+  - name: qa-aws-glue-s3-connection-west
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_west
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to S3"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_west_sgs
+      subnet_id: ## Verify
+      availability_zone: ## Verify
+
+  - name: qa-aws-glue-opensearch-connection-west
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_west
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to OpenSearch"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_west_sgs
+      subnet_id: ## Verify
+      availability_zone: ## Verify
+
+  - name: qa-avenue
+    gear: avenue:^1
+    inputs:
+      ba:               *ba
+      owner:            *owner
+      aws_account_name: *aws_account_qa
+    regions:
+      - name: *aws_east
+        roles:
+          - role_name: CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-lambda
+            trust_document: iam/qa/roles/CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-lambda/trust.json
+            description: "Custom Lambda IAM role for ASVSBCBRDATA"
+          - role_name: CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-glue
+            trust_document: iam/qa/roles/CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-glue/trust.json
+            description: "Custom glue IAM role for ASVSBCBRDATA"   
+            sub_path: ASVSDP ## Verify
+        policies: 
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation
+            policy_document: iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm
+            policy_document: iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs
+            policy_document: iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-ec2
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-ec2.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-emr
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-emr.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-lambdas
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-lambdas.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-s3
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-s3.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns.json          
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch.json  
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue.json   
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction   
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction.json  
+        attachments:
+          CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-lambda:
+            policy_names:
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-ec2
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-emr
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-lambdas
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-s3
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+            policy_arns:
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2
+          
+          CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-glue:
+            policy_names:
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction  
+            policy_arns:
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2  
+        
+        template_variables:
+          account_id:     *aws_account_qa_id
+          region:         *aws_east
+          s3_bucket_name: *qa_east_s3_bucket
+          glue_connector: *glue_connector_name
+          glue_job:       *glue_job_name
+          file_pull_acct_id: '944193143772' # non-prod non-PCI OneStream acct ## Do not use - find ours if we need it
+      - name: *aws_west
+        roles:
+          - role_name: CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-lambda
+            trust_document: iam/qa/roles/CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-lambda/trust.json
+            description: "Custom Lambda IAM role for ASVSBCBRDATA"         
+          - role_name: CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-glue
+            trust_document: iam/qa/roles/CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-glue/trust.json
+            description: "Custom glue IAM role for ASVSBCBRDATA"   
+            sub_path: ASVSDP ## Verify
+        policies: 
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation
+            policy_document: iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm
+            policy_document: iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs
+            policy_document: iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-ec2
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-ec2.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-emr
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-emr.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-lambdas
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-lambdas.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-s3
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-s3.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch.json  
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3.json
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue.json   
+          - policy_name: CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction   
+            policy_document: infra/iam/qa/policies/CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction.json  
+        attachments:
+          CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-lambda:
+            policy_names:
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-ec2
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-emr
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-lambdas
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-s3
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+            policy_arns:
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2
+           
+          CapOne-Card-qa-CustomRole-ASVSBCBRDATA-dnc-glue:
+            policy_names:
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-sns
+              - CapOne-Card-qa-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction  
+            policy_arns:
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2  
+        template_variables:
+          account_id:     *aws_account_qa_id
+          region:         *aws_west
+          s3_bucket_name: *qa_west_s3_bucket
+          glue_connector: *glue_connector_name
+          glue_job:       *glue_job_name
+          file_pull_acct_id: '944193143772' # non-prod non-PCI OneStream acct ## Do not use - find ours if we need it
+
+  ## DEV ##
+  - name: dev-s3-data
+    gear: *s3_gear
+    inputs: &default_s3_inputs
+      ba: *ba
+      component: *component
+      owner: *owner
+      lifecycle_policy_file_url: https://github.cloud.capitalone.com/raw/CDO-ConsultativeSales/SBC_DNCDATA/gen3_infra_setup/infra/s3/dev/lifecycle-policy.json
+      datastore_inventory:
+        contains_data: true
+        contains_human_data: true
+        contains_hshd: false
+        contains_pii: false
+        data_international_indicator:
+          - NONE
+      tags:
+        ASV: ASVSBCBRDATA
+        owner: dipanjan.sen@capitalone.com
+        CMDBEnvironment: ENVNPSBCBRDATA
+    regions:
+      - name: *aws_east
+        bucket_name: *dev_s3_bucket
+        logging_bucket: aws-logs-186133747232-us-east-1 
+        policy_file_url: https://github.cloud.capitalone.com/raw/CDO-ConsultativeSales/SBC_DNCDATA/gen3_infra_setup/infra/s3/dev/policy-east.json
+        bucket_contents:
+          artifact_extract_paths:
+            - source: scripts
+              destination: ./glue
+        policy_app_iam_roles:
+          - arn:aws:iam::322666074950:role/BAASVJENKINSPLATFORM/IAMReserved-Jenkins3x-Child*
+          - *glue_iam_role_name
+        policy_federated_eids: *qa_team_eids
+        lifecycle_rules: &s3_life_cycle_rules
+          - rule_name: ## Needed
+            prefix: sample/ ## Verify
+            current_version:
+              expiration_days: ## Needed
+              transitions_days: ## Needed
+            non_current_version:
+              expiration_days: ## Needed
+              transitions_days: ## Needed
+
+  - name: dev-aws-glue-extract-job-east
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_east
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_east
+
+  - name: dev-aws-glue-transform-job-east
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_east
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_east
+
+  - name: dev-aws-glue-load-job-east
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_east
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_east
+
+  - name: dev-aws-glue-extract-job-west
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_west
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_west
+
+  - name: dev-aws-glue-transform-job-west
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_west
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_west
+
+  - name: dev-aws-glue-load-job-west
+    gear: *glue_gear
+    inputs:
+      <<: *glue_job_common_inputs
+      aws_account: *aws_account_qa
+      aws_region: *aws_west
+      iam_role: ## Needed
+      script_location: ## Needed
+      temp_path: ## Needed
+      extra_python_libraries: ## Needed
+      worker_type: G.1X
+      number_of_workers: 2 ## Verify
+      max_capacity: 1
+      max_concurrency: 1
+      num_retries: 0 ## Verify
+      timeout: 1000 # provide a value in minutes ## Verify
+      default_arguments:
+        <<: *glue_job_default_args
+        region: *aws_west
+
+  - name: dev-aws-glue-s3-connection-east
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_east
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to S3"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_east_sgs
+      subnet_id: ## Verify
+      availability_zone: us-east-1c ## Verify AZ
+
+  - name: dev-aws-glue-opensearch-connection-east
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_east
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to OpenSearch"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_east_sgs
+      subnet_id: ## Verify
+      availability_zone: us-east-1c ## Verify AZ
+
+  - name: dev-aws-glue-s3-connection-west
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_west
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to S3"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_west_sgs
+      subnet_id: ## Verify
+      availability_zone: ## Verify
+
+  - name: dev-aws-glue-opensearch-connection-west
+    gear: *glue_gear
+    inputs:
+      resource_name: *glue_connector_name
+      resource_type: connection
+      aws_region: *aws_west
+      aws_account: *aws_account_qa
+      connection_type: NETWORK
+      description: "Glue Connection to OpenSearch"
+      connection_properties:
+        JDBC_ENFORCE_SSL: 'false'
+      security_groups: *qa_west_sgs
+      subnet_id: ## Verify
+      availability_zone: ## Verify
+
+  ## Different avenue template than QA
+  - name: dev-avenue
+    gear: avenue:^1 # https://github.cloud.capitalone.com/bogie-gears/avenue#avenue-gear
+    inputs: # https://github.cloud.capitalone.com/bogie-gears/avenue#parameters
+     ba: BASBCBRDATA
+     owner: spectre@capitalone.com
+     aws_account_name: *aws_account_qa
+    regions: # https://github.cloud.capitalone.com/bogie-gears/avenue#regions
+      - name: us-east-1
+        roles:
+          - role_name: CapOne-Card-Dev-CustomRole-ASVSBCBRDATA-dnc-lambda
+            trust_document: iam/dev/roles/CapOne-Card-Dev-CustomRole-ASVSBCBRDATA-dnc-lambda/trust.json
+            description: "Custom Lambda IAM role for ASVSBCBRDATA"
+          - role_name: CapOne-Card-Dev-CustomRole-ASVSBCBRDATA-dnc-glue
+            trust_document: iam/dev/roles/CapOne-Card-Dev-CustomRole-ASVSBCBRDATA-dnc-glue/trust.json
+            description: "Custom glue IAM role for ASVSBCBRDATA"   
+            sub_path: ASVSDP ## Verify
+        policies: 
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation
+              policy_document: iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm
+              policy_document: iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs
+              policy_document: iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-ec2
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-ec2.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-emr
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-emr.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-lambdas
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-lambdas.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-opensearch.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-s3
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-s3.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-sns
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-sns.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch.json  
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3.json
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-Glue.json   
+            - policy_name: CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction   
+              policy_document: infra/iam/dev/policies/CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction.json  
+        attachments:
+          CapOne-Card-Dev-CustomRole-ASVSBCBRDATA-dnc-lambda:
+            policy_names:
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudformation
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchalarm
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-cloudwatchlogs
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-crossaccounts
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-ec2
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-emr
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-eventbridge
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-lambdas
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-s3
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-sns
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+            policy_arns:
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2
+             
+          CapOne-Card-Dev-CustomRole-ASVSBCBRDATA-dnc-glue:
+            policy_names:
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-cloudwatch
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-ec2
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-s3
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-Glue
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-opensearch
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-sns
+              - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction  
+            policy_arns:
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2  
+        
+        template_variables:
+          account_id:     *aws_account_dev_id
+          region:         *aws_east
+          s3_bucket_name: *dev_s3_bucket
+          glue_connector: *glue_connector_name
+          glue_job:       *glue_job_name
+          file_pull_acct_id: '944193143772' # non-prod non-PCI OneStream acct ## Do not use - find ours if we need it
+
+  # ## PROD ## - to be added later
