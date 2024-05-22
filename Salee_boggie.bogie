@@ -22,8 +22,8 @@ vars:
   ## REFERENCE VARIABLES
 
   aws:
-    - &aws_account_dev          app-card-sbc-qa-4-1
-    - &aws_account_dev_id       322666074950  
+    - &aws_account_dev          app-card-sbc-dev-1
+    - &aws_account_dev_id       186133747232  
     - &aws_account_qa           app-card-sbc-qa-4-1
     - &aws_account_qa_id        322666074950
     # - &aws_account_prod         app-card-sbc-prd-4-1
@@ -1006,8 +1006,8 @@ environments:
               - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-sns
               - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-Glue
             policy_arns:
-                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
-                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2
+                - arn:aws:iam::186133747232:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::186133747232:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2
              
           CapOne-Card-Dev-CustomRole-ASVSBCBRDATA-dnc-glue:
             policy_names:
@@ -1019,8 +1019,8 @@ environments:
               - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-sns
               - CapOne-Card-Dev-CustomPolicy-ASVSBCBRDATA-dnc-glue-stepfunction  
             policy_arns:
-                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
-                - arn:aws:iam::322666074950:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2  
+                - arn:aws:iam::186133747232:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UE1
+                - arn:aws:iam::186133747232:policy/ASVCLOUDIAMMANAGEMENT/IAM-KMS-Policy-UW2  
         
         template_variables:
           account_id:     *aws_account_dev_id
